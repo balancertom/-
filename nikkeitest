@@ -1,0 +1,491 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>日経TEST 800点突破ドリル (Mobile)</title>
+    <script src="https://unpkg.com/vue@3/dist/vue.global.js"></script>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        nikkei: {
+                            DEFAULT: '#0e2645',
+                            light: '#1d4ed8',
+                            bg: '#f0f2f5',
+                            accent: '#c5a365'
+                        }
+                    },
+                    screens: {
+                        'xs': '375px',
+                    }
+                }
+            }
+        }
+    </script>
+    <style>
+        body { font-family: -apple-system, BlinkMacSystemFont, "Helvetica Neue", "Hiragino Sans", "Hiragino Kaku Gothic ProN", "Yu Gothic", sans-serif; }
+        .fade-enter-active, .fade-leave-active { transition: opacity 0.3s ease; }
+        .fade-enter-from, .fade-leave-to { opacity: 0; }
+        
+        /* スクロールバー非表示（スマホライク） */
+        .no-scrollbar::-webkit-scrollbar { display: none; }
+        .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+        
+        .animate-blink { animation: blink 1s infinite; }
+        @keyframes blink { 50% { opacity: 0.6; } }
+
+        /* モバイル用タップハイライト削除 */
+        * { -webkit-tap-highlight-color: transparent; }
+    </style>
+</head>
+<body class="bg-slate-50 text-slate-800 h-[100dvh] flex flex-col overflow-hidden">
+
+    <div id="app" class="flex flex-col h-full w-full max-w-md mx-auto bg-white shadow-xl relative overflow-hidden">
+        
+        <!-- Header -->
+        <header class="flex justify-between items-center px-4 h-14 shrink-0 bg-white border-b border-slate-100 z-10">
+            <div class="flex items-center">
+                <i class="fa-solid fa-chart-line text-nikkei-accent mr-2 text-xl"></i>
+                <div>
+                    <h1 class="text-lg font-bold text-nikkei leading-none">日経TESTドリル</h1>
+                    <p class="text-[10px] text-slate-400 leading-none mt-0.5">Target 800+ / Mobile Ed.</p>
+                </div>
+            </div>
+            
+            <div v-if="viewState === 'drill'" class="flex items-center space-x-3">
+                <div class="flex flex-col items-end">
+                    <div class="text-[8px] font-bold text-slate-400">TIME</div>
+                    <div class="text-xl font-mono font-bold leading-none"
+                         :class="timer <= 0 ? 'text-red-600 animate-blink' : 'text-slate-700'">
+                        {{ formattedTime }}
+                    </div>
+                </div>
+                <div class="text-right pl-3 border-l border-slate-100">
+                    <div class="text-[8px] font-bold text-slate-400">SCORE</div>
+                    <div class="text-xl font-bold text-nikkei leading-none">{{ score }}<span class="text-xs text-slate-300">/{{ maxQuestions }}</span></div>
+                </div>
+            </div>
+        </header>
+
+        <!-- Loading Overlay -->
+        <div v-if="isLoading" class="absolute inset-0 bg-white/95 z-50 flex flex-col items-center justify-center p-6 text-center">
+            <div class="animate-spin h-10 w-10 border-4 border-nikkei border-t-transparent rounded-full mb-4"></div>
+            <h2 class="text-lg font-bold text-nikkei mb-2 animate-pulse">{{ loadingMessage }}</h2>
+            <p class="text-xs text-slate-500">Gemini 2.5 が<br>オーダーメイド問題を生成中...</p>
+        </div>
+
+        <!-- Setup View -->
+        <transition name="fade">
+            <div v-if="viewState === 'setup'" class="flex flex-col h-full overflow-y-auto no-scrollbar pb-24">
+                <div class="p-5 space-y-8">
+                    
+                    <!-- API Key Input Section -->
+                    <div class="bg-slate-800 rounded-xl p-4 text-white shadow-lg">
+                        <label class="block text-xs font-bold text-slate-400 mb-1">
+                            <i class="fa-solid fa-key mr-1"></i> Gemini API Key (必須)
+                        </label>
+                        <div class="relative">
+                            <input type="password" v-model="apiKey" placeholder="AIzaSy..." 
+                                class="w-full bg-slate-700 border border-slate-600 text-white text-sm rounded-lg p-3 pr-10 focus:ring-2 focus:ring-nikkei-accent focus:border-transparent outline-none transition-all placeholder-slate-500">
+                            <div class="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400">
+                                <i class="fa-solid" :class="apiKey ? 'fa-check text-green-400' : 'fa-lock'"></i>
+                            </div>
+                        </div>
+                        <div class="mt-3 flex items-center">
+                            <input type="checkbox" id="saveKey" v-model="saveApiKey" class="mr-2 accent-nikkei-accent h-4 w-4">
+                            <label for="saveKey" class="text-xs text-slate-300">ブラウザにキーを保存する</label>
+                        </div>
+                        <p class="text-[10px] text-slate-500 mt-2 leading-snug">
+                            ※キーは端末内にのみ保存され、外部サーバーへ送信されることはありません。
+                        </p>
+                    </div>
+
+                    <section>
+                        <h3 class="text-sm font-bold text-slate-500 mb-3 flex items-center">
+                            <i class="fa-solid fa-layer-group mr-2"></i> 出題ジャンル
+                        </h3>
+                        <div class="grid grid-cols-2 gap-2">
+                            <label class="col-span-2 flex items-center p-3 bg-white border border-slate-200 rounded-lg shadow-sm cursor-pointer active:scale-[0.98] transition-transform"
+                                   :class="{'border-nikkei ring-1 ring-nikkei bg-blue-50': selectedGenre === '総合'}">
+                                <input type="radio" v-model="selectedGenre" value="総合" class="sr-only">
+                                <div class="w-8 h-8 rounded-full bg-slate-100 flex items-center justify-center mr-3 shrink-0"
+                                     :class="{'bg-nikkei text-white': selectedGenre === '総合'}">
+                                    <i class="fa-solid fa-globe"></i>
+                                </div>
+                                <span class="font-bold text-sm">総合（ランダム）</span>
+                            </label>
+                            
+                            <label v-for="(genre, idx) in GENRE_OPTIONS" :key="genre" 
+                                   class="flex flex-col items-center justify-center p-3 bg-white border border-slate-200 rounded-lg shadow-sm cursor-pointer active:scale-[0.98] transition-transform text-center h-24"
+                                   :class="{'border-nikkei ring-1 ring-nikkei bg-blue-50': selectedGenre === genre}">
+                                <input type="radio" v-model="selectedGenre" :value="genre" class="sr-only">
+                                <i :class="GENRE_ICONS[idx]" class="fa-solid text-xl mb-2 text-slate-300" :class="{'text-nikkei': selectedGenre === genre}"></i>
+                                <span class="text-[10px] font-bold leading-tight">{{ genre }}</span>
+                            </label>
+                        </div>
+                    </section>
+
+                    <section>
+                        <h3 class="text-sm font-bold text-slate-500 mb-3 flex items-center">
+                            <i class="fa-solid fa-graduation-cap mr-2"></i> 解説レベル
+                        </h3>
+                        <div class="space-y-2">
+                            <label v-for="level in LEVEL_OPTIONS" :key="level.value"
+                                   class="flex items-center p-3 bg-white border border-slate-200 rounded-lg shadow-sm cursor-pointer active:scale-[0.98] transition-transform"
+                                   :class="{'border-nikkei ring-1 ring-nikkei bg-blue-50': selectedLevel === level.value}">
+                                <input type="radio" v-model="selectedLevel" :value="level.value" class="sr-only">
+                                <div class="w-8 h-8 rounded-full bg-slate-100 flex items-center justify-center mr-3 shrink-0"
+                                     :class="{'bg-nikkei text-white': selectedLevel === level.value}">
+                                    <i :class="level.icon" class="fa-solid text-sm"></i>
+                                </div>
+                                <div class="flex-grow">
+                                    <span class="block text-sm font-bold text-slate-800">{{ level.label }}</span>
+                                    <span class="block text-[10px] text-slate-500">{{ level.desc }}</span>
+                                </div>
+                                <i v-if="selectedLevel === level.value" class="fa-solid fa-circle-check text-nikkei ml-2"></i>
+                            </label>
+                        </div>
+                    </section>
+                </div>
+
+                <!-- Start Button (Sticky Bottom Area) -->
+                <div class="fixed bottom-0 left-0 right-0 p-4 bg-white/90 backdrop-blur border-t border-slate-200 max-w-md mx-auto z-20">
+                    <button @click="startDrill" :disabled="!apiKey"
+                        class="w-full bg-nikkei text-white text-lg font-bold py-3.5 rounded-xl shadow-lg shadow-blue-900/20 active:scale-[0.98] transition-all disabled:bg-slate-300 disabled:shadow-none flex items-center justify-center">
+                        <span v-if="!apiKey">APIキーを入力してください</span>
+                        <span v-else><i class="fa-solid fa-play mr-2 text-sm"></i> スタート</span>
+                    </button>
+                </div>
+            </div>
+        </transition>
+
+        <!-- Drill View -->
+        <transition name="fade">
+            <div v-if="viewState === 'drill' && questions.length > 0" class="flex flex-col h-full relative">
+                
+                <!-- Progress Bar -->
+                <div class="w-full bg-slate-200 h-1 shrink-0">
+                    <div class="bg-nikkei h-1 transition-all duration-300 ease-out" :style="{ width: ((currentIndex + 1) / maxQuestions * 100) + '%' }"></div>
+                </div>
+
+                <!-- Main Scrollable Area -->
+                <div class="flex-grow overflow-y-auto overflow-x-hidden p-5 pb-32 scroll-smooth" id="questionArea">
+                    
+                    <!-- Question Card -->
+                    <div class="mb-6">
+                        <div class="flex items-center space-x-2 mb-3">
+                            <span class="bg-nikkei text-white text-[10px] font-bold px-2 py-1 rounded">Q.{{ currentIndex + 1 }}</span>
+                            <span class="text-blue-600 font-bold text-[10px] bg-blue-50 px-2 py-1 rounded border border-blue-100">{{ currentQuestion.genre }}</span>
+                        </div>
+                        <h3 class="text-base font-bold text-slate-800 leading-relaxed">
+                            {{ currentQuestion.question }}
+                        </h3>
+                    </div>
+
+                    <!-- Options -->
+                    <div class="space-y-3 mb-8">
+                        <button v-for="(option, idx) in currentQuestion.options" :key="idx"
+                            @click="handleAnswer(idx)"
+                            :disabled="hasAnswered"
+                            :class="getOptionClass(idx)"
+                            class="w-full text-left p-4 rounded-xl border text-sm font-medium transition-all duration-200 relative group active:scale-[0.99] touch-manipulation">
+                            <div class="flex">
+                                <span class="inline-block font-bold opacity-50 mr-3 shrink-0">{{ ['A','B','C','D'][idx] }}.</span>
+                                <span class="leading-snug">{{ option }}</span>
+                            </div>
+                            
+                            <span v-if="hasAnswered && idx === currentQuestion.answerIndex" class="absolute right-3 top-1/2 -translate-y-1/2 text-green-600 bg-white rounded-full">
+                                <i class="fa-solid fa-circle-check fa-lg"></i>
+                            </span>
+                            <span v-if="hasAnswered && userSelectedIdx === idx && idx !== currentQuestion.answerIndex" class="absolute right-3 top-1/2 -translate-y-1/2 text-red-500 bg-white rounded-full">
+                                <i class="fa-solid fa-circle-xmark fa-lg"></i>
+                            </span>
+                        </button>
+                    </div>
+
+                    <!-- Result & Explanation (Visible after answer) -->
+                    <transition name="fade">
+                        <div v-if="hasAnswered" class="bg-slate-50 rounded-xl p-4 border border-slate-200 mb-4 animate-slide-up">
+                            <div :class="isCorrect ? 'text-green-700 bg-green-50 border-green-200' : 'text-red-700 bg-red-50 border-red-200'" 
+                                 class="p-3 rounded-lg border mb-4 flex items-center font-bold">
+                                <i :class="isCorrect ? 'fa-circle-check' : 'fa-circle-xmark'" class="fa-solid mr-2 text-lg"></i>
+                                {{ isCorrect ? '正解！' : '不正解...' }}
+                                <span v-if="!isCorrect" class="text-xs ml-auto font-normal text-slate-500">正解: {{ ['A','B','C','D'][currentQuestion.answerIndex] }}</span>
+                            </div>
+
+                            <div class="mb-4">
+                                <h4 class="text-xs font-bold text-slate-400 mb-2 flex items-center">
+                                    <i class="fa-solid fa-lightbulb text-yellow-400 mr-1.5"></i> 解説
+                                </h4>
+                                <p class="text-sm text-slate-700 leading-relaxed whitespace-pre-wrap">{{ currentQuestion.explanation }}</p>
+                            </div>
+
+                            <a :href="googleSearchUrl" target="_blank" 
+                               class="block w-full text-center py-2.5 bg-white border border-slate-200 rounded-lg text-slate-600 font-bold text-xs hover:bg-slate-50 transition-colors">
+                                <i class="fa-brands fa-google mr-1 text-slate-400"></i> 
+                                「{{ currentQuestion.searchKeyword }}」で検索
+                            </a>
+                        </div>
+                    </transition>
+                </div>
+
+                <!-- Next Button (Fixed Footer) -->
+                <transition name="fade">
+                    <div v-if="hasAnswered" class="absolute bottom-0 left-0 right-0 p-4 bg-white/90 backdrop-blur border-t border-slate-200 z-20">
+                        <button @click="handleNextButtonClick" 
+                            class="w-full bg-nikkei text-white text-lg font-bold py-3.5 rounded-xl shadow-lg hover:bg-slate-800 active:scale-[0.98] transition-all flex items-center justify-center">
+                            {{ isLastQuestion ? '結果を見る' : '次へ進む' }} 
+                            <i :class="isLastQuestion ? 'fa-flag-checkered' : 'fa-arrow-right'" class="fa-solid ml-2"></i>
+                        </button>
+                    </div>
+                </transition>
+            </div>
+        </transition>
+
+        <!-- Result View (End of Drill) -->
+        <transition name="fade">
+            <div v-if="viewState === 'result'" class="flex flex-col h-full items-center justify-center p-8 text-center bg-slate-50">
+                <div class="bg-white p-8 rounded-2xl shadow-xl w-full border border-slate-100">
+                    <i class="fa-solid fa-trophy text-5xl text-yellow-400 mb-4 block drop-shadow-sm"></i>
+                    <h2 class="text-2xl font-bold text-nikkei mb-1">Finish!</h2>
+                    <p class="text-xs text-slate-400 mb-6">お疲れ様でした</p>
+                    
+                    <div class="text-5xl font-black text-slate-800 mb-2 font-mono">
+                        {{ score }}<span class="text-xl text-slate-400 font-normal">/{{ maxQuestions }}</span>
+                    </div>
+                    <div class="text-sm font-bold text-slate-500 mb-8">Score</div>
+
+                    <button @click="viewState = 'setup'" class="w-full bg-nikkei text-white font-bold py-3.5 rounded-xl shadow hover:bg-slate-800 transition-colors">
+                        <i class="fa-solid fa-rotate-right mr-2"></i> もう一度挑戦
+                    </button>
+                </div>
+            </div>
+        </transition>
+    </div>
+
+    <script>
+        const { createApp, ref, computed, onMounted, onUnmounted, watch } = Vue;
+
+        createApp({
+            setup() {
+                // API設定 (ローカルストレージから読み込み)
+                const apiKey = ref(localStorage.getItem('nikkei_drill_api_key') || '');
+                const saveApiKey = ref(localStorage.getItem('nikkei_drill_save_key') === 'true');
+                const MODEL_NAME = 'gemini-2.5-flash'; 
+                
+                // 状態管理
+                const viewState = ref('setup'); // setup, drill, result
+                const isLoading = ref(false);
+                const loadingMessage = ref('');
+                
+                // ドリル設定
+                const maxQuestions = 10;
+                const currentIndex = ref(0);
+                const score = ref(0);
+                const questions = ref([]);
+                const hasAnswered = ref(false);
+                const userSelectedIdx = ref(null);
+
+                // カスタム設定用データ
+                const selectedGenre = ref('総合');
+                const selectedLevel = ref('business');
+
+                const GENRE_OPTIONS = [
+                    "経営環境・産業動向", "企業戦略", "会計・財務",
+                    "法務・人事", "マーケティング・販売", "技術・IT"
+                ];
+                
+                const GENRE_ICONS = [
+                    "fa-chart-pie", "fa-chess", "fa-coins",
+                    "fa-scale-balanced", "fa-shop", "fa-microchip"
+                ];
+
+                const LEVEL_OPTIONS = [
+                    { value: 'middle', label: '中学生Lv', desc: '例え話で優しく', icon: 'fa-seedling' },
+                    { value: 'high', label: '高校生Lv', desc: '用語解説付き', icon: 'fa-book-open' },
+                    { value: 'business', label: 'ビジネス', desc: 'PREP法で簡潔に', icon: 'fa-briefcase' }
+                ];
+
+                // タイマー処理
+                const timer = ref(48);
+                const timerInterval = ref(null);
+                const startTimer = () => {
+                    clearInterval(timerInterval.value);
+                    timer.value = 48;
+                    timerInterval.value = setInterval(() => { timer.value--; }, 1000);
+                };
+                const stopTimer = () => { clearInterval(timerInterval.value); };
+                const formattedTime = computed(() => {
+                    const abs = Math.abs(timer.value).toString().padStart(2, '0');
+                    return (timer.value < 0 ? '-' : '') + abs;
+                });
+                onUnmounted(() => stopTimer());
+
+                // APIキー保存設定の監視
+                watch(saveApiKey, (newVal) => {
+                    localStorage.setItem('nikkei_drill_save_key', newVal);
+                    if (!newVal) {
+                        localStorage.removeItem('nikkei_drill_api_key');
+                    } else if (apiKey.value) {
+                        localStorage.setItem('nikkei_drill_api_key', apiKey.value);
+                    }
+                });
+
+                watch(apiKey, (newVal) => {
+                    if (saveApiKey.value) {
+                        localStorage.setItem('nikkei_drill_api_key', newVal);
+                    }
+                });
+
+                // プロンプト生成
+                const generatePrompt = () => {
+                    let genreInstruction = selectedGenre.value === '総合' 
+                        ? `3. 出題範囲\n以下のジャンルから、偏りがないようにランダムに選定:\n${GENRE_OPTIONS.map(g => '・'+g).join('\n')}`
+                        : `3. 出題範囲\n「${selectedGenre.value}」に関する問題のみを10問作成。`;
+
+                    let levelInstruction = "";
+                    if (selectedLevel.value === 'middle') levelInstruction = "中学生でも分かるように専門用語を使わず、身近な例え話で解説。";
+                    else if (selectedLevel.value === 'high') levelInstruction = "高校生向けに、用語に注釈を加えながら丁寧な口調で解説。";
+                    else levelInstruction = "ビジネス向けに、結論ファーストの論理的な文章で解説。";
+
+                    return `あなたは「日経TEST」対策のAIコーチです。800点を目指すための4択問題を「10問」作成してください。
+【制約】
+1. 配列(Array)の中にJSONオブジェクトを入れる形式で出力。
+2. テーマは最新のビジネストレンドに基づくこと。
+${genreInstruction}
+4. 解説(explanation)のルール: **${levelInstruction}**
+5. Markdownは使用禁止。純粋なJSONテキストのみを返すこと。
+
+【JSON構造】
+[
+  {
+    "genre": "分野名",
+    "question": "問題文...",
+    "options": ["選択肢A", "B", "C", "D"],
+    "answerIndex": 0,
+    "explanation": "解説文...",
+    "searchKeyword": "検索用単語"
+  }
+]`;
+                };
+
+                const startDrill = async () => {
+                    if (!apiKey.value) {
+                        alert("APIキーを入力してください");
+                        return;
+                    }
+                    
+                    score.value = 0;
+                    currentIndex.value = 0;
+                    questions.value = []; 
+                    isLoading.value = true;
+                    loadingMessage.value = 'AIと思考中...';
+
+                    try {
+                        const prompt = generatePrompt(); 
+                        const data = await callGemini(prompt);
+                        
+                        if (!Array.isArray(data) || data.length === 0) throw new Error("データ生成エラー");
+                        questions.value = data;
+                        viewState.value = 'drill';
+                        resetQuestionState(); 
+                    } catch (e) {
+                        console.error(e);
+                        alert("エラーが発生しました: " + e.message + "\nAPIキーが正しいか確認してください。");
+                    } finally {
+                        isLoading.value = false;
+                    }
+                };
+
+                const callGemini = async (prompt) => {
+                    const url = `https://generativelanguage.googleapis.com/v1beta/models/${MODEL_NAME}:generateContent?key=${apiKey.value}`;
+                    const response = await fetch(url, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            contents: [{ parts: [{ text: prompt }] }],
+                            generationConfig: { response_mime_type: "application/json", temperature: 0.7 }
+                        })
+                    });
+                    if (!response.ok) {
+                        const err = await response.json().catch(() => ({}));
+                        throw new Error(err.error?.message || response.statusText);
+                    }
+                    const json = await response.json();
+                    const text = json.candidates[0].content.parts[0].text.replace(/```json/g, '').replace(/```/g, '').trim();
+                    return JSON.parse(text);
+                };
+
+                const resetQuestionState = () => {
+                    hasAnswered.value = false;
+                    userSelectedIdx.value = null;
+                    startTimer();
+                    // スクロールをトップへ
+                    setTimeout(() => {
+                        const el = document.getElementById('questionArea');
+                        if(el) el.scrollTop = 0;
+                    }, 100);
+                };
+
+                const currentQuestion = computed(() => questions.value[currentIndex.value] || null);
+                const isLastQuestion = computed(() => currentIndex.value >= maxQuestions - 1);
+                
+                const handleAnswer = (idx) => {
+                    if (hasAnswered.value) return;
+                    userSelectedIdx.value = idx;
+                    hasAnswered.value = true;
+                    stopTimer(); 
+                    if (idx === currentQuestion.value.answerIndex) score.value++;
+                    
+                    // 自動で解説エリアが見えるように少しスクロール（オプション）
+                    setTimeout(() => {
+                         const el = document.getElementById('questionArea');
+                         if(el) el.scrollTop = el.scrollHeight;
+                    }, 100);
+                };
+
+                const handleNextButtonClick = async () => {
+                    if (isLastQuestion.value) {
+                        viewState.value = 'result';
+                    } else {
+                        currentIndex.value++;
+                        resetQuestionState();
+                    }
+                };
+
+                const googleSearchUrl = computed(() => {
+                    if (!currentQuestion.value) return '#';
+                    return `https://www.google.com/search?q=${encodeURIComponent(currentQuestion.value.searchKeyword)}`;
+                });
+
+                const getOptionClass = (idx) => {
+                    if (!hasAnswered.value) return 'bg-white border-slate-200 text-slate-700 active:bg-slate-50 shadow-sm';
+                    if (idx === currentQuestion.value.answerIndex) return 'bg-green-50 border-green-500 font-bold text-green-900 shadow-md ring-1 ring-green-500'; 
+                    if (idx === userSelectedIdx.value) return 'bg-red-50 border-red-400 text-red-900 opacity-80';
+                    return 'bg-slate-50 border-slate-100 opacity-40'; 
+                };
+
+                const isCorrect = computed(() => {
+                     if (!currentQuestion.value || userSelectedIdx.value === null) return false;
+                     return userSelectedIdx.value === currentQuestion.value.answerIndex;
+                });
+
+                return {
+                    apiKey, saveApiKey, viewState, isLoading, loadingMessage,
+                    questions, currentIndex, maxQuestions, score,
+                    currentQuestion, userSelectedIdx, hasAnswered, isLastQuestion,
+                    selectedGenre, selectedLevel, GENRE_OPTIONS, GENRE_ICONS, LEVEL_OPTIONS,
+                    startDrill, handleAnswer, handleNextButtonClick,
+                    googleSearchUrl, getOptionClass, isCorrect,
+                    timer, formattedTime
+                };
+            }
+        }).mount('#app');
+    </script>
+</body>
+</html>
