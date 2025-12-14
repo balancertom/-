@@ -174,7 +174,7 @@
                 </div>
 
                 <!-- Main Scrollable Area -->
-                <div class="flex-grow overflow-y-auto overflow-x-hidden p-5 pb-32 scroll-smooth" id="questionArea">
+                <div class="flex-grow overflow-y-auto overflow-x-hidden p-5 pb-10 scroll-smooth" id="questionArea">
                     
                     <!-- Question Card -->
                     <div class="mb-6">
@@ -226,24 +226,20 @@
                             </div>
 
                             <a :href="googleSearchUrl" target="_blank" 
-                               class="block w-full text-center py-2.5 bg-white border border-slate-200 rounded-lg text-slate-600 font-bold text-xs hover:bg-slate-50 transition-colors">
+                               class="block w-full text-center py-2.5 bg-white border border-slate-200 rounded-lg text-slate-600 font-bold text-xs hover:bg-slate-50 transition-colors mb-6">
                                 <i class="fa-brands fa-google mr-1 text-slate-400"></i> 
                                 「{{ currentQuestion.searchKeyword }}」で検索
                             </a>
+
+                            <!-- Next Button (Moved Here for Scrolling) -->
+                            <button @click="handleNextButtonClick" 
+                                class="w-full bg-nikkei text-white text-lg font-bold py-3.5 rounded-xl shadow-lg hover:bg-slate-800 active:scale-[0.98] transition-all flex items-center justify-center">
+                                {{ isLastQuestion ? 'トップに戻る' : '次へ進む' }} 
+                                <i :class="isLastQuestion ? 'fa-house' : 'fa-arrow-right'" class="fa-solid ml-2"></i>
+                            </button>
                         </div>
                     </transition>
                 </div>
-
-                <!-- Next Button (Fixed Footer) -->
-                <transition name="fade">
-                    <div v-if="hasAnswered" class="absolute bottom-0 left-0 right-0 p-4 bg-white/90 backdrop-blur border-t border-slate-200 z-20">
-                        <button @click="handleNextButtonClick" 
-                            class="w-full bg-nikkei text-white text-lg font-bold py-3.5 rounded-xl shadow-lg hover:bg-slate-800 active:scale-[0.98] transition-all flex items-center justify-center">
-                            {{ isLastQuestion ? '結果を見る' : '次へ進む' }} 
-                            <i :class="isLastQuestion ? 'fa-flag-checkered' : 'fa-arrow-right'" class="fa-solid ml-2"></i>
-                        </button>
-                    </div>
-                </transition>
             </div>
         </transition>
 
@@ -451,7 +447,8 @@ ${genreInstruction}
 
                 const handleNextButtonClick = async () => {
                     if (isLastQuestion.value) {
-                        viewState.value = 'result';
+                        // 最後の問題の場合はトップ（セットアップ画面）に戻る
+                        viewState.value = 'setup';
                     } else {
                         currentIndex.value++;
                         resetQuestionState();
